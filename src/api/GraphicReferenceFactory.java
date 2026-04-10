@@ -4,6 +4,7 @@ import graphicLayer.GBounded;
 import graphicLayer.GContainer;
 import graphicLayer.GElement;
 import graphicLayer.GImage;
+import graphicLayer.GString;
 
 /**
  * Fabrique de références configurées pour les éléments graphiques.
@@ -24,7 +25,9 @@ public final class GraphicReferenceFactory {
 			ref.addCommand("setDim", new SetDim());
 		}
 
-		if (element instanceof GContainer) {
+		// On n'autorise l'ajout/suppression que pour les vrais conteneurs
+		// manipulés dans le projet, pas pour GString.
+		if (element instanceof GContainer && !(element instanceof GString)) {
 			ref.addCommand("add", new AddElement(environment));
 			ref.addCommand("del", new DelElement(environment));
 		}

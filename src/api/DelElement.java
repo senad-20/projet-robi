@@ -20,17 +20,17 @@ public class DelElement implements Command {
 
 	@Override
 	public Reference run(Reference receiver, SNode method) {
-		String localName = method.get(2).contents();
-		String fullName = receiver.getName() + "." + localName;
-
-		Reference refToDelete = environment.getReferenceByName(fullName);
-
 		Object container = receiver.getReceiver();
-		Object element = refToDelete.getReceiver();
 
 		if (!(container instanceof GContainer)) {
 			throw new Error("del non supporté pour " + container.getClass().getName());
 		}
+
+		String localName = method.get(2).contents();
+		String fullName = receiver.getName() + "." + localName;
+
+		Reference refToDelete = environment.getReferenceByName(fullName);
+		Object element = refToDelete.getReceiver();
 
 		if (!(element instanceof GElement)) {
 			throw new Error("L'objet à supprimer n'est pas un élément graphique");

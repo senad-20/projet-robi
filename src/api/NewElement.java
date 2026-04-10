@@ -17,14 +17,27 @@ public class NewElement implements Command {
 	@Override
 	public Reference run(Reference receiver, SNode method) {
 		try {
-			@SuppressWarnings("unchecked")
-			Class<? extends GElement> clazz = (Class<? extends GElement>) receiver.getReceiver();
+			Object rawReceiver = receiver.getReceiver();
 
-			GElement element = clazz.getDeclaredConstructor().newInstance();
+			if (!(rawReceiver instanceof Class<?>)) {
+				throw new Error("Impossible de créer l'élément : " + method);
+			}
+
+			Class<?> clazz = (Class<?>) rawReceiver;
+
+			if (!GElement.class.isAssignableFrom(clazz)) {
+				throw new Error("Impossible de créer l'élément : " + method);
+			}
+
+			@SuppressWarnings("unchecked")
+			Class<? extends GElement> graphicClass = (Class<? extends GElement>) clazz;
+
+			GElement element = graphicClass.getDeclaredConstructor().newInstance();
 			return GraphicReferenceFactory.createGraphicReference(element, environment);
 
+		} catch (Error e) {
+			throw e;
 		} catch (Exception e) {
-			e.printStackTrace();
 			throw new Error("Impossible de créer l'élément : " + method);
 		}
 	}
