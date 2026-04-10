@@ -35,7 +35,7 @@ jobs:
             https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.12/org.jacoco.cli-0.8.12-nodeps.jar
 
           curl -L -o tools/checkstyle.jar \
-            https://repo1.maven.org/maven2/com/puppycrawl/tools/checkstyle/10.17.0/checkstyle-10.17.0-all.jar
+            https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.17.0/checkstyle-10.17.0-all.jar
 
       - name: Show project libraries
         run: |
