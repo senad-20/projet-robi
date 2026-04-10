@@ -1,0 +1,41 @@
+name: Java CI
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+jobs:
+  test:
+    name: Compile and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download JUnit Console
+        run: |
+          mkdir -p tools
+          curl -L -o tools/junit-platform-console-standalone.jar \
+            https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.10.2/junit-platform-console-standalone-1.10.2.jar
+
+      - name: Compile
+        run: |
+          mkdir -p out
+          find src -name "*.java" > sources.txt
+          javac -cp "lib/*:tools/junit-platform-console-standalone.jar" -d out @sources.txt
+
+      - name: Run tests
+        run: |
+          xvfb-run -a java -jar tools/junit-platform-console-standalone.jar \
+            --class-path "out:lib/*" \
+            --scan-class-path \
+            --include-package tests
