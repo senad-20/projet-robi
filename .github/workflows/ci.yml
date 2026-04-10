@@ -27,6 +27,11 @@ jobs:
           curl -L -o tools/junit-platform-console-standalone.jar \
             https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.10.2/junit-platform-console-standalone-1.10.2.jar
 
+      - name: Show available libraries
+        run: |
+          echo "Contents of lib/:"
+          ls -l lib || true
+
       - name: Compile
         run: |
           mkdir -p out
@@ -35,7 +40,7 @@ jobs:
 
       - name: Run tests
         run: |
-          xvfb-run -a java -jar tools/junit-platform-console-standalone.jar \
-            --class-path "out:lib/*" \
+          xvfb-run -a java -cp "out:lib/*:tools/junit-platform-console-standalone.jar" \
+            org.junit.platform.console.ConsoleLauncher execute \
             --scan-class-path \
             --include-package tests
