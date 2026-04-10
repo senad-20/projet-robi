@@ -167,3 +167,26 @@ Les tests portent surtout sur la couche non graphique, car elle concentre la log
 )
 ```
 
+### Partie 2 — Application distribuée + IHM
+
+Architecture client–serveur :
+- Serveur = interpréteur (réutilisation complète de la partie 1)
+- Client = interface graphique + envoi de commandes
+- Communication via objets sérialisés (requêtes / réponses)
+
+ Fonctionnalités implémentées :
+- Envoi de commandes depuis le client
+- Exécution côté serveur
+- Retour de l’état graphique (SceneData)
+- Synchronisation client ↔ serveur
+
+Interface graphique (Swing) :
+- Visualisation de la scène
+- Interaction via boutons (add, move, etc.)
+- Console de commandes
+- Arbre des éléments
+
+ Persistance :
+- Sauvegarde / chargement de scènes (sérialisation)
+
+---
