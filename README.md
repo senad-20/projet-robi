@@ -190,3 +190,202 @@ Interface graphique (Swing) :
 - Sauvegarde / chargement de scènes (sérialisation)
 
 ---
+
+
+Partie 3 – Machine à états (Robibot)
+------------------------------------
+
+### Principe
+
+Un second serveur (BotServer) a été mis en place afin d’implémenter une **machine à états pilotant des éléments graphiques**.
+
+Contrairement à l’architecture client/serveur précédente :
+
+*   le serveur gère entièrement la scène
+    
+*   des agents (bots) modifient automatiquement cette scène
+    
+*   les clients ne font que lire et afficher
+    
+
+Le client (BotClient) est donc **passif** :
+
+*   il envoie périodiquement GET\_SCENE
+    
+*   il redessine la scène reçue
+    
+*   il n’exécute aucune logique
+    
+
+Cela garantit un **arbitrage centralisé côté serveur** et une synchronisation entre clients.
+
+### Modèle de machine à états
+
+Chaque bot contrôle un élément graphique (ex : space.robi1) et suit une **machine à états finie**.
+
+#### États
+
+Le bot possède 4 états correspondant à des déplacements diagonaux :
+
+*   UP\_LEFT
+    
+*   UP\_RIGHT
+    
+*   DOWN\_LEFT
+    
+*   DOWN\_RIGHT
+    
+
+Chaque état encode une direction (dx, dy).
+
+#### Transitions
+
+À chaque tick :
+
+*   la prochaine position est calculée
+    
+*   si une bordure est atteinte :
+    
+    *   collision horizontale → inversion de dx
+        
+    *   collision verticale → inversion de dy
+        
+*   un changement d’état est déclenché
+    
+*   la couleur de l’élément est modifiée aléatoirement
+    
+
+Le comportement obtenu est un déplacement avec rebond sur les bords.
+
+Difficultés rencontrées
+-----------------------
+
+Plusieurs difficultés ont été rencontrées tout au long du projet :
+
+*   **Conception de l’architecture**
+    
+    *   passage d’une API locale (partie 1) à une architecture client/serveur (partie 2)
+        
+    *   nécessité de ne pas dupliquer la logique métier côté serveur
+        
+*   **Réutilisation de l’API**
+    
+    *   intégrer correctement les commandes existantes dans le serveur
+        
+    *   éviter de réécrire des comportements déjà implémentés
+        
+*   **Gestion des références et de l’environnement**
+    
+    *   manipulation des chemins (space.robi.x)
+        
+    *   suppression récursive et cohérence des références
+        
+*   **Gestion des scripts**
+    
+    *   interprétation correcte des S-expressions
+        
+    *   persistance des scripts dans l’environnement serveur
+        
+    *   exécution dynamique sans casser l’état existant
+        
+*   **Communication client/serveur**
+    
+    *   sérialisation des données (SceneData, ElementData)
+        
+    *   gestion des requêtes et réponses
+        
+    *   maintien d’un protocole simple mais fiable
+        
+*   **Synchronisation**
+    
+    *   garantir que plusieurs clients voient le même état
+        
+    *   centraliser toute la logique côté serveur
+        
+*   **Gestion des limites (out of bounds)**
+    
+    *   empêcher les éléments de sortir de leur conteneur
+        
+    *   gérer les cas sans générer d’erreurs
+        
+*   **Interface graphique**
+    
+    *   gestion des interactions utilisateur
+        
+    *   affichage cohérent de la scène et de l’arbre
+        
+*   **Machine à états**
+    
+    *   choix d’un modèle pertinent pour le mouvement
+        
+    *   gestion des transitions et du comportement dynamique
+        
+*   **Contraintes de temps**
+    
+    *   priorisation des fonctionnalités essentielles
+        
+    *   certains choix ont été faits pour avancer rapidement plutôt que pour être optimaux
+        
+
+Améliorations et optimisations possibles
+----------------------------------------
+
+Plusieurs axes d’amélioration sont possibles à l’échelle du projet :
+
+*   **Performances**
+    
+    *   éviter la reconstruction complète de la scène à chaque requête
+        
+    *   mettre en place des mises à jour incrémentales
+        
+*   **Architecture**
+    
+    *   mieux séparer les responsabilités (API / serveur / simulation)
+        
+    *   réduire certaines dépendances fortes
+        
+*   **Scalabilité**
+    
+    *   améliorer la gestion de plusieurs clients simultanés
+        
+    *   optimiser la gestion des données pour de grandes scènes
+        
+*   **Réseau**
+    
+    *   réduire la quantité de données envoyées (diff au lieu de snapshot complet)
+        
+    *   améliorer la gestion des connexions
+        
+*   **Gestion des scripts**
+    
+    *   ajouter des validations plus robustes
+        
+    *   améliorer les messages d’erreur
+        
+*   **Machine à états**
+    
+    *   enrichir les comportements (interactions entre bots, états supplémentaires)
+        
+    *   rendre les transitions configurables
+        
+    *   Collision
+        
+*   **Interface utilisateur**
+    
+    *   améliorer l’ergonomie
+        
+    *   ajouter plus de contrôles visuels
+        
+    *   Ajouter gestion des images API existant
+        
+*   **Robustesse**
+    
+    *   meilleure gestion des erreurs
+        
+    *   ajout de tests supplémentaires (notamment côté serveur)
+        
+*   **Maintenabilité**
+    
+    *   factorisation de certaines parties du code
+        
+    *   amélioration de la lisibilité globale

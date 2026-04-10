@@ -85,7 +85,8 @@ public class RobiServer {
 				+ request.getX() + ", y=" + request.getY() + ", dx=" + request.getDx() + ", dy=" + request.getDy()
 				+ ", width=" + request.getWidth() + ", height=" + request.getHeight() + ", color="
 				+ safe(request.getColor()) + ", text=" + safe(request.getText()) + ", imagePath="
-				+ safe(request.getImagePath()) + ", path=" + safe(request.getPath()) + "}";
+				+ safe(request.getImagePath()) + ", path=" + safe(request.getPath()) + ", script="
+				+ safe(request.getScript()) + "}";
 	}
 
 	private static String formatResponse(ServerResponse response) {

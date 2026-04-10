@@ -1,7 +1,6 @@
 package client;
 
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.image.BufferedImage;
@@ -13,7 +12,6 @@ import java.net.Socket;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JColorChooser;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -37,8 +35,9 @@ import shared.ServerResponse;
 /**
  * Fenêtre principale du client Robi.
  *
- * Elle permet d'explorer la scène, de manipuler les éléments graphiques et
- * d'envoyer les requêtes correspondantes au serveur.
+ * Elle permet d'explorer la scène, de manipuler les éléments graphiques,
+ * d'envoyer les requêtes correspondantes au serveur et d'écrire des scripts
+ * S-expression directement depuis l'interface.
  */
 public class RobiClientFrame extends JFrame {
 	private static final long serialVersionUID = 1L;
@@ -48,6 +47,7 @@ public class RobiClientFrame extends JFrame {
 	private final DefaultTreeModel treeModel = new DefaultTreeModel(rootNode);
 	private final JTree elementTree = new JTree(treeModel);
 
+	private final JTextArea scriptArea = new JTextArea();
 	private final JTextArea logArea = new JTextArea();
 
 	private final JLabel nameValue = new JLabel("-");
@@ -70,13 +70,16 @@ public class RobiClientFrame extends JFrame {
 		elementTree.setRootVisible(true);
 
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		setSize(1100, 700);
+		setSize(1100, 800);
 		setLocationRelativeTo(null);
 		setVisible(true);
 
 		refreshScene();
 	}
 
+	/**
+	 * Construit la barre d'actions principales du client.
+	 */
 	private JPanel createToolbar() {
 		JPanel toolbar = new JPanel(new GridLayout(3, 6, 5, 5));
 
@@ -91,6 +94,7 @@ public class RobiClientFrame extends JFrame {
 		JButton screenshotButton = new JButton("Screenshot");
 		JButton saveButton = new JButton("Save");
 		JButton loadButton = new JButton("Load");
+		JButton runScriptButton = new JButton("Run Script");
 
 		JButton colorButton = new JButton("Color");
 		JButton positionButton = new JButton("Position");
@@ -112,6 +116,7 @@ public class RobiClientFrame extends JFrame {
 		screenshotButton.addActionListener(e -> saveScreenshot());
 		saveButton.addActionListener(e -> saveScene());
 		loadButton.addActionListener(e -> loadScene());
+		runScriptButton.addActionListener(e -> runScriptFromEditor());
 
 		colorButton.addActionListener(e -> changeColor());
 		positionButton.addActionListener(e -> changePosition());
@@ -139,10 +144,15 @@ public class RobiClientFrame extends JFrame {
 		toolbar.add(screenshotButton);
 		toolbar.add(saveButton);
 		toolbar.add(loadButton);
+		toolbar.add(runScriptButton);
 
 		return toolbar;
 	}
 
+	/**
+	 * Construit la zone centrale contenant l'arbre de la scène, la zone de dessin
+	 * et le panneau de propriétés.
+	 */
 	private JSplitPane createMainArea() {
 		JPanel leftPanel = new JPanel(new BorderLayout());
 		leftPanel.setBorder(BorderFactory.createTitledBorder("Elements"));
@@ -159,6 +169,9 @@ public class RobiClientFrame extends JFrame {
 		return splitPane;
 	}
 
+	/**
+	 * Construit le panneau d'affichage des propriétés de l'élément sélectionné.
+	 */
 	private JPanel createPropertiesPanel() {
 		JPanel propertiesPanel = new JPanel(new GridLayout(5, 2, 6, 6));
 		propertiesPanel.setBorder(BorderFactory.createTitledBorder("Properties"));
@@ -178,17 +191,39 @@ public class RobiClientFrame extends JFrame {
 		return propertiesPanel;
 	}
 
-	private JScrollPane createBottomArea() {
+	/**
+	 * Construit la zone basse de la fenêtre avec l'éditeur de script et le journal
+	 * d'exécution.
+	 */
+	private JSplitPane createBottomArea() {
+		scriptArea.setRows(7);
+		scriptArea.setBorder(BorderFactory.createTitledBorder("Script"));
+		scriptArea.setText("(space setColor white)\n");
+
+		JPanel scriptPanel = new JPanel(new BorderLayout());
+		scriptPanel.add(new JScrollPane(scriptArea), BorderLayout.CENTER);
+
 		logArea.setEditable(false);
 		logArea.setRows(7);
 		logArea.setBorder(BorderFactory.createTitledBorder("Log"));
-		return new JScrollPane(logArea);
+
+		JScrollPane logScroll = new JScrollPane(logArea);
+
+		JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scriptPanel, logScroll);
+		splitPane.setResizeWeight(0.55);
+		return splitPane;
 	}
 
+	/**
+	 * Crée un label aligné à droite utilisé dans le panneau de propriétés.
+	 */
 	private JLabel label(String text) {
 		return new JLabel(text + ":", SwingConstants.RIGHT);
 	}
 
+	/**
+	 * Envoie une demande d'ajout d'élément au serveur.
+	 */
 	private void sendAdd(String type) {
 		String parentPath = getSelectedElementPath();
 		if (parentPath == null) {
@@ -226,6 +261,9 @@ public class RobiClientFrame extends JFrame {
 		log("ADD " + type + " into " + parentPath);
 	}
 
+	/**
+	 * Envoie une demande de suppression d'un élément au serveur.
+	 */
 	private void sendDelete() {
 		String selected = getSelectedElementPath();
 
@@ -240,12 +278,18 @@ public class RobiClientFrame extends JFrame {
 		log("DELETE " + selected);
 	}
 
+	/**
+	 * Demande au serveur l'état courant de la scène.
+	 */
 	private void refreshScene() {
 		ClientRequest request = new ClientRequest("GET_SCENE");
 		applyResponse(sendRequest(request));
 		log("REFRESH");
 	}
 
+	/**
+	 * Réinitialise complètement la scène côté serveur.
+	 */
 	private void clearScene() {
 		int result = JOptionPane.showConfirmDialog(this, "Clear the whole scene?", "Confirm clear",
 				JOptionPane.OK_CANCEL_OPTION);
@@ -258,6 +302,9 @@ public class RobiClientFrame extends JFrame {
 		log("CLEAR");
 	}
 
+	/**
+	 * Demande au serveur de sauvegarder la scène dans un fichier.
+	 */
 	private void saveScene() {
 		JFileChooser chooser = new JFileChooser();
 		int result = chooser.showSaveDialog(this);
@@ -271,6 +318,9 @@ public class RobiClientFrame extends JFrame {
 		log("SAVE " + chooser.getSelectedFile().getAbsolutePath());
 	}
 
+	/**
+	 * Demande au serveur de charger une scène sauvegardée.
+	 */
 	private void loadScene() {
 		JFileChooser chooser = new JFileChooser();
 		int result = chooser.showOpenDialog(this);
@@ -284,6 +334,9 @@ public class RobiClientFrame extends JFrame {
 		log("LOAD " + chooser.getSelectedFile().getAbsolutePath());
 	}
 
+	/**
+	 * Sauvegarde localement une capture de la vue cliente.
+	 */
 	private void saveScreenshot() {
 		if (currentScene == null) {
 			JOptionPane.showMessageDialog(this, "Nothing to capture.");
@@ -314,6 +367,9 @@ public class RobiClientFrame extends JFrame {
 		}
 	}
 
+	/**
+	 * Déplace l'élément sélectionné d'un décalage fixe.
+	 */
 	private void moveSelected(int dx, int dy) {
 		String selected = getSelectedElementPath();
 
@@ -330,6 +386,9 @@ public class RobiClientFrame extends JFrame {
 		log("MOVE " + selected + " by (" + dx + ", " + dy + ")");
 	}
 
+	/**
+	 * Demande un changement de couleur pour l'élément sélectionné ou le space.
+	 */
 	private void changeColor() {
 		String selected = getSelectedElementPath();
 		if (selected == null) {
@@ -353,6 +412,9 @@ public class RobiClientFrame extends JFrame {
 		log("SET_COLOR " + selected + " = " + chosen);
 	}
 
+	/**
+	 * Demande une nouvelle position absolue pour l'élément sélectionné.
+	 */
 	private void changePosition() {
 		String selected = getSelectedElementPath();
 
@@ -382,6 +444,9 @@ public class RobiClientFrame extends JFrame {
 		}
 	}
 
+	/**
+	 * Demande une nouvelle taille pour l'élément sélectionné ou pour le space.
+	 */
 	private void changeSize() {
 		String selected = getSelectedElementPath();
 		if (selected == null) {
@@ -409,6 +474,32 @@ public class RobiClientFrame extends JFrame {
 		}
 	}
 
+	/**
+	 * Exécute le contenu de l'éditeur de script sur le serveur.
+	 *
+	 * Le script est interprété dans l'environnement courant du serveur. Les scripts
+	 * ajoutés dynamiquement via addScript restent donc disponibles pour les
+	 * exécutions suivantes tant que l'environnement n'est pas réinitialisé.
+	 */
+	private void runScriptFromEditor() {
+		String script = scriptArea.getText();
+
+		if (script == null || script.isBlank()) {
+			JOptionPane.showMessageDialog(this, "Enter a script first.");
+			return;
+		}
+
+		ClientRequest request = new ClientRequest("RUN_SCRIPT");
+		request.setScript(script);
+
+		applyResponse(sendRequest(request));
+		log("RUN_SCRIPT");
+		log(script);
+	}
+
+	/**
+	 * Envoie une requête sérialisée au serveur et récupère sa réponse.
+	 */
 	private ServerResponse sendRequest(ClientRequest request) {
 		try (Socket socket = new Socket("localhost", 5000);
 				ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
@@ -423,6 +514,9 @@ public class RobiClientFrame extends JFrame {
 		}
 	}
 
+	/**
+	 * Applique la réponse du serveur à l'interface cliente.
+	 */
 	private void applyResponse(ServerResponse response) {
 		if (response == null) {
 			return;
@@ -444,6 +538,9 @@ public class RobiClientFrame extends JFrame {
 		}
 	}
 
+	/**
+	 * Reconstruit l'arbre visuel des éléments à partir de la scène reçue.
+	 */
 	private void rebuildTree(SceneData scene) {
 		String selectedPath = getSelectedElementPath();
 		rootNode.removeAllChildren();
@@ -459,6 +556,9 @@ public class RobiClientFrame extends JFrame {
 		restoreSelection(selectedPath);
 	}
 
+	/**
+	 * Construit récursivement un nœud d'arbre à partir d'un élément sérialisable.
+	 */
 	private DefaultMutableTreeNode buildNode(ElementData element, String parentPath) {
 		String fullPath = parentPath + "." + element.getName();
 		DefaultMutableTreeNode node = new DefaultMutableTreeNode(new TreeEntry(element.getName(), fullPath));
@@ -470,6 +570,9 @@ public class RobiClientFrame extends JFrame {
 		return node;
 	}
 
+	/**
+	 * Restaure la sélection précédente si elle existe encore.
+	 */
 	private void restoreSelection(String selectedPath) {
 		if (selectedPath == null || "space".equals(selectedPath)) {
 			elementTree.setSelectionRow(0);
@@ -482,6 +585,9 @@ public class RobiClientFrame extends JFrame {
 		}
 	}
 
+	/**
+	 * Recherche récursivement un chemin d'arbre à partir d'un nom qualifié.
+	 */
 	private TreePath findTreePath(DefaultMutableTreeNode node, String fullPath) {
 		Object userObject = node.getUserObject();
 		if (userObject instanceof TreeEntry) {
@@ -501,12 +607,18 @@ public class RobiClientFrame extends JFrame {
 		return null;
 	}
 
+	/**
+	 * Déplie complètement l'arbre des éléments.
+	 */
 	private void expandAll() {
 		for (int i = 0; i < elementTree.getRowCount(); i++) {
 			elementTree.expandRow(i);
 		}
 	}
 
+	/**
+	 * Retourne le nom qualifié de l'élément sélectionné dans l'arbre.
+	 */
 	private String getSelectedElementPath() {
 		TreePath path = elementTree.getSelectionPath();
 		if (path == null) {
@@ -521,6 +633,9 @@ public class RobiClientFrame extends JFrame {
 		return ((TreeEntry) userObject).getFullPath();
 	}
 
+	/**
+	 * Met à jour le panneau de propriétés selon la sélection courante.
+	 */
 	private void updatePropertiesFromSelection() {
 		String selectedPath = getSelectedElementPath();
 
@@ -550,6 +665,9 @@ public class RobiClientFrame extends JFrame {
 		colorValue.setText(element.getColor());
 	}
 
+	/**
+	 * Recherche un élément de la scène courante à partir de son nom qualifié.
+	 */
 	private ElementData findElementByPath(SceneData scene, String fullPath) {
 		if (scene == null || fullPath == null || "space".equals(fullPath)) {
 			return null;
@@ -577,39 +695,17 @@ public class RobiClientFrame extends JFrame {
 		return current;
 	}
 
-	private String rgbToName(Color color) {
-		if (Color.BLUE.equals(color))
-			return "blue";
-		if (Color.RED.equals(color))
-			return "red";
-		if (Color.GREEN.equals(color))
-			return "green";
-		if (Color.YELLOW.equals(color))
-			return "yellow";
-		if (Color.WHITE.equals(color))
-			return "white";
-		if (Color.ORANGE.equals(color))
-			return "orange";
-		if (Color.PINK.equals(color))
-			return "pink";
-		if (Color.GRAY.equals(color))
-			return "gray";
-		if (Color.LIGHT_GRAY.equals(color))
-			return "lightgray";
-		if (Color.DARK_GRAY.equals(color))
-			return "darkgray";
-		if (Color.CYAN.equals(color))
-			return "cyan";
-		if (Color.MAGENTA.equals(color))
-			return "magenta";
-		return "black";
-	}
-
+	/**
+	 * Ajoute une ligne au journal affiché dans la fenêtre.
+	 */
 	private void log(String message) {
 		logArea.append(message + "\n");
 		logArea.setCaretPosition(logArea.getDocument().getLength());
 	}
 
+	/**
+	 * Représente une entrée d'arbre avec un libellé et un chemin logique complet.
+	 */
 	private static class TreeEntry {
 		private final String displayName;
 		private final String fullPath;

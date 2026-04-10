@@ -42,7 +42,8 @@ import stree.parser.SParser;
  * reconstruit une vue sérialisable pour le client.
  *
  * La seule logique spécifique conservée ici concerne le contrôle des bornes des
- * conteneurs.
+ * conteneurs, la persistance de la scène sérialisable, ainsi que l'exécution de
+ * scripts textuels envoyés par le client.
  */
 public class SceneManager {
 
@@ -63,6 +64,13 @@ public class SceneManager {
 		resetEnvironment();
 	}
 
+	/**
+	 * Traite une requête cliente et renvoie l'état sérialisable de la scène après
+	 * exécution.
+	 *
+	 * Les scripts enregistrés dynamiquement dans l'environnement serveur restent
+	 * disponibles tant que l'environnement n'est pas réinitialisé.
+	 */
 	public synchronized ServerResponse handle(ClientRequest request) {
 		try {
 			if (request == null || request.getAction() == null || request.getAction().isBlank()) {
@@ -98,6 +106,9 @@ public class SceneManager {
 			case "SET_COLOR":
 				response = handleSetColor(request);
 				break;
+			case "RUN_SCRIPT":
+				response = handleRunScript(request);
+				break;
 			case "CLEAR":
 				resetEnvironment();
 				response = success("scene cleared");
@@ -127,6 +138,12 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Ajoute un nouvel élément graphique dans le conteneur ciblé.
+	 *
+	 * La création concrète reste déléguée à l'API existante via la génération d'un
+	 * script compatible avec l'interpréteur.
+	 */
 	private ServerResponse handleAdd(ClientRequest request) {
 		String parentPath = normalizeTarget(request.getTarget());
 		String type = trimToNull(request.getType());
@@ -217,6 +234,9 @@ public class SceneManager {
 		return success("element added");
 	}
 
+	/**
+	 * Supprime un élément ciblé ainsi que ses éventuels descendants.
+	 */
 	private ServerResponse handleDelete(ClientRequest request) {
 		String target = normalizeTarget(request.getTarget());
 		log("DELETE", "Requested delete: target=" + safe(target));
@@ -243,6 +263,12 @@ public class SceneManager {
 		return success("element deleted");
 	}
 
+	/**
+	 * Déplace un élément relativement à sa position actuelle.
+	 *
+	 * Si le déplacement sortirait du conteneur parent, la requête est ignorée sans
+	 * provoquer d'erreur.
+	 */
 	private ServerResponse handleMove(ClientRequest request) {
 		String target = normalizeTarget(request.getTarget());
 
@@ -273,6 +299,12 @@ public class SceneManager {
 		return success("element moved");
 	}
 
+	/**
+	 * Positionne explicitement un élément à des coordonnées données.
+	 *
+	 * Si la nouvelle position sortirait du conteneur parent, la requête est ignorée
+	 * sans erreur.
+	 */
 	private ServerResponse handleSetPosition(ClientRequest request) {
 		String target = normalizeTarget(request.getTarget());
 
@@ -305,6 +337,12 @@ public class SceneManager {
 		return success("position updated");
 	}
 
+	/**
+	 * Modifie la taille du space ou d'un élément redimensionnable.
+	 *
+	 * La modification est refusée si elle rendrait la scène incohérente vis-à-vis
+	 * des bornes ou des enfants déjà présents.
+	 */
 	private ServerResponse handleSetSize(ClientRequest request) {
 		String target = normalizeTarget(request.getTarget());
 		int width = request.getWidth();
@@ -360,6 +398,9 @@ public class SceneManager {
 		return success("size updated");
 	}
 
+	/**
+	 * Modifie la couleur du space ou d'un élément graphique.
+	 */
 	private ServerResponse handleSetColor(ClientRequest request) {
 		String target = normalizeTarget(request.getTarget());
 		String color = trimToNull(request.getColor());
@@ -383,6 +424,33 @@ public class SceneManager {
 		return success("color updated");
 	}
 
+	/**
+	 * Exécute un script textuel envoyé par le client.
+	 *
+	 * Cette exécution se fait dans l'environnement serveur courant. Les scripts
+	 * ajoutés dynamiquement via addScript sont donc conservés et réutilisables lors
+	 * des appels suivants, exactement comme dans l'API locale.
+	 */
+	private ServerResponse handleRunScript(ClientRequest request) {
+		String script = trimToNull(request.getScript());
+		log("RUN_SCRIPT", "script=" + safe(script));
+
+		if (script == null) {
+			return failure("missing script");
+		}
+
+		try {
+			runScript(script);
+			syncMetadataFromScene(buildSceneSnapshot());
+			return success("script executed");
+		} catch (Error e) {
+			return failure(e.getMessage() == null ? "invalid script" : e.getMessage());
+		}
+	}
+
+	/**
+	 * Sauvegarde la scène sérialisable dans un fichier.
+	 */
 	private ServerResponse handleSave(ClientRequest request) throws IOException {
 		String path = trimToNull(request.getPath());
 		log("SAVE", "path=" + safe(path));
@@ -398,6 +466,10 @@ public class SceneManager {
 		return success("scene saved");
 	}
 
+	/**
+	 * Recharge une scène sérialisable depuis un fichier puis reconstruit l'état
+	 * serveur via l'API.
+	 */
 	private ServerResponse handleLoad(ClientRequest request) {
 		String path = trimToNull(request.getPath());
 		log("LOAD", "path=" + safe(path));
@@ -444,6 +516,9 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Reconstruit récursivement un script équivalent à la scène sérialisée.
+	 */
 	private void appendElementScript(StringBuilder script, String parentPath, ElementData element) {
 		String fullPath = parentPath + "." + element.getName();
 
@@ -475,6 +550,10 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Réinitialise complètement l'environnement serveur avec les références de base
+	 * nécessaires à l'interpréteur.
+	 */
 	private void resetEnvironment() {
 		log("RESET", "Rebuilding server API environment");
 
@@ -516,6 +595,9 @@ public class SceneManager {
 		environment.addReference("Label", labelRef);
 	}
 
+	/**
+	 * Crée le conteneur racine space utilisé côté serveur.
+	 */
 	private Object createSpace() {
 		try {
 			Class<?> spaceClass = loadClass("graphicLayer.GSpace");
@@ -528,6 +610,9 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Applique les propriétés principales du space par réflexivité.
+	 */
 	private void applySpaceState(Object space, int width, int height, String backgroundColor) {
 		try {
 			Method setDimension = space.getClass().getMethod("setDimension", Dimension.class);
@@ -542,6 +627,9 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Charge une classe graphique par son nom complet.
+	 */
 	private Class<?> loadClass(String name) {
 		try {
 			return Class.forName(name);
@@ -550,6 +638,9 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Parse et exécute une ou plusieurs S-expressions dans l'environnement courant.
+	 */
 	private void runScript(String script) {
 		try {
 			SParser<SNode> parser = new SParser<>();
@@ -563,6 +654,10 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Construit une vue sérialisable de la scène actuelle à partir de
+	 * l'environnement serveur.
+	 */
 	private SceneData buildSceneSnapshot() {
 		SceneData scene = new SceneData();
 		scene.setWidth(spaceWidth);
@@ -603,6 +698,10 @@ public class SceneManager {
 		return scene;
 	}
 
+	/**
+	 * Crée une représentation sérialisable d'un élément graphique référencé dans
+	 * l'environnement.
+	 */
 	private ElementData createSerializableElement(String fullPath, Object receiver) {
 		String type = toElementType(receiver);
 
@@ -628,6 +727,9 @@ public class SceneManager {
 		return data;
 	}
 
+	/**
+	 * Tente de reconnaître le type logique d'un objet graphique concret.
+	 */
 	private String toElementType(Object receiver) {
 		String simpleName = receiver.getClass().getSimpleName();
 
@@ -647,6 +749,9 @@ public class SceneManager {
 		return null;
 	}
 
+	/**
+	 * Vérifie si une boîte englobante tient dans son conteneur parent.
+	 */
 	private boolean fitsInsideParent(String parentPath, int x, int y, int width, int height) {
 		if (x < 0 || y < 0 || width <= 0 || height <= 0) {
 			return false;
@@ -662,6 +767,10 @@ public class SceneManager {
 		return parent != null && x + width <= parent.getWidth() && y + height <= parent.getHeight();
 	}
 
+	/**
+	 * Vérifie si tous les éléments de premier niveau restent dans le space après un
+	 * redimensionnement.
+	 */
 	private boolean allTopLevelElementsFit(SceneData scene, int width, int height) {
 		for (ElementData element : scene.getElements()) {
 			if (element.getX() < 0 || element.getY() < 0 || element.getX() + element.getWidth() > width
@@ -672,6 +781,10 @@ public class SceneManager {
 		return true;
 	}
 
+	/**
+	 * Vérifie si tous les enfants d'un conteneur tiennent encore après
+	 * redimensionnement de ce conteneur.
+	 */
 	private boolean childrenStillFitInside(ElementData parent, int width, int height) {
 		for (ElementData child : parent.getChildren()) {
 			if (child.getX() < 0 || child.getY() < 0 || child.getX() + child.getWidth() > width
@@ -682,6 +795,9 @@ public class SceneManager {
 		return true;
 	}
 
+	/**
+	 * Crée une configuration par défaut pour un nouvel élément selon son type.
+	 */
 	private ElementData createDefaultElement(String name, String type, ClientRequest request) {
 		ElementData element = new ElementData(name, type);
 		element.setX(10);
@@ -712,6 +828,9 @@ public class SceneManager {
 		return element;
 	}
 
+	/**
+	 * Recherche un élément dans la scène sérialisable à partir de son nom qualifié.
+	 */
 	private ElementData findElementByPath(SceneData scene, String fullPath) {
 		if (scene == null || fullPath == null || "space".equals(fullPath)) {
 			return null;
@@ -739,12 +858,19 @@ public class SceneManager {
 		return current;
 	}
 
+	/**
+	 * Reconstruit les métadonnées non directement lisibles sur certains objets
+	 * graphiques à partir d'une scène sérialisable.
+	 */
 	private void rebuildMetadata(SceneData scene, String parentPath) {
 		for (ElementData element : scene.getElements()) {
 			rebuildMetadata(element, parentPath);
 		}
 	}
 
+	/**
+	 * Reconstruit récursivement les métadonnées d'un élément.
+	 */
 	private void rebuildMetadata(ElementData element, String parentPath) {
 		String fullPath = parentPath + "." + element.getName();
 
@@ -762,12 +888,32 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Resynchronise les métadonnées à partir de la scène courante.
+	 *
+	 * Cette étape est utile après l'exécution de scripts directs envoyés par le
+	 * client afin de conserver les textes, chemins d'image et couleurs côté vue
+	 * sérialisable.
+	 */
+	private void syncMetadataFromScene(SceneData scene) {
+		labelTexts.clear();
+		imagePaths.clear();
+		elementColors.clear();
+		rebuildMetadata(scene, "space");
+	}
+
+	/**
+	 * Supprime toutes les métadonnées associées à un sous-arbre supprimé.
+	 */
 	private void removeMetadataTree(String rootPath) {
 		labelTexts.keySet().removeIf(key -> key.equals(rootPath) || key.startsWith(rootPath + "."));
 		imagePaths.keySet().removeIf(key -> key.equals(rootPath) || key.startsWith(rootPath + "."));
 		elementColors.keySet().removeIf(key -> key.equals(rootPath) || key.startsWith(rootPath + "."));
 	}
 
+	/**
+	 * Tente d'appeler sans argument une méthode par son nom.
+	 */
 	private Object invoke(Object target, String methodName) {
 		try {
 			Method method = target.getClass().getMethod(methodName);
@@ -777,11 +923,17 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Lit une valeur entière par réflexion, avec valeur par défaut.
+	 */
 	private int readInt(Object target, String methodName, int defaultValue) {
 		Object value = invoke(target, methodName);
 		return value instanceof Number ? ((Number) value).intValue() : defaultValue;
 	}
 
+	/**
+	 * Fournit une largeur logique par défaut selon le type.
+	 */
 	private int defaultWidthFor(String type, int width) {
 		if (width > 0) {
 			return width;
@@ -798,6 +950,9 @@ public class SceneManager {
 		return 0;
 	}
 
+	/**
+	 * Fournit une hauteur logique par défaut selon le type.
+	 */
 	private int defaultHeightFor(String type, int height) {
 		if (height > 0) {
 			return height;
@@ -814,6 +969,9 @@ public class SceneManager {
 		return 0;
 	}
 
+	/**
+	 * Convertit un nom de couleur logique en couleur AWT.
+	 */
 	private Color toAwtColor(String colorName) {
 		if (colorName == null) {
 			return Color.WHITE;
@@ -851,19 +1009,31 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Indique si un type logique peut contenir des éléments enfants.
+	 */
 	private boolean isContainerType(String type) {
 		return "Rect".equals(type) || "Oval".equals(type);
 	}
 
+	/**
+	 * Indique si un type logique supporte la redimension.
+	 */
 	private boolean supportsSetDim(String type) {
 		return "Rect".equals(type) || "Oval".equals(type);
 	}
 
+	/**
+	 * Normalise une cible éventuelle en retournant "space" par défaut.
+	 */
 	private String normalizeTarget(String target) {
 		String normalized = trimToNull(target);
 		return normalized == null ? "space" : normalized;
 	}
 
+	/**
+	 * Trim une chaîne et retourne null si elle devient vide.
+	 */
 	private String trimToNull(String value) {
 		if (value == null) {
 			return null;
@@ -872,33 +1042,55 @@ public class SceneManager {
 		return trimmed.isEmpty() ? null : trimmed;
 	}
 
+	/**
+	 * Retourne le chemin du parent d'un nom qualifié.
+	 */
 	private String parentPath(String fullPath) {
 		int index = fullPath.lastIndexOf('.');
 		return index < 0 ? "space" : fullPath.substring(0, index);
 	}
 
+	/**
+	 * Retourne le nom local d'un nom qualifié.
+	 */
 	private String localName(String fullPath) {
 		int index = fullPath.lastIndexOf('.');
 		return index < 0 ? fullPath : fullPath.substring(index + 1);
 	}
 
+	/**
+	 * Entoure une chaîne de guillemets en échappant les caractères sensibles.
+	 */
 	private String quote(String value) {
 		String safe = value == null ? "" : value;
 		return "\"" + safe.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 	}
 
+	/**
+	 * Construit une réponse serveur de succès avec l'instantané courant de la
+	 * scène.
+	 */
 	private ServerResponse success(String message) {
 		return new ServerResponse(true, message, buildSceneSnapshot());
 	}
 
+	/**
+	 * Construit une réponse serveur d'échec avec l'instantané courant de la scène.
+	 */
 	private ServerResponse failure(String message) {
 		return new ServerResponse(false, message, buildSceneSnapshot());
 	}
 
+	/**
+	 * Écrit une ligne dans les logs serveur.
+	 */
 	private void log(String tag, String message) {
 		System.out.println("[" + LocalDateTime.now().format(LOG_TIME) + "] [" + tag + "] " + message);
 	}
 
+	/**
+	 * Affiche un résumé lisible de la scène pour le debug et la démonstration.
+	 */
 	private void logSceneSummary(SceneData scene) {
 		if (scene == null) {
 			log("SCENE", "null");
@@ -914,6 +1106,9 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Affiche récursivement un élément et ses descendants dans les logs.
+	 */
 	private void logElement(ElementData element, String indent) {
 		System.out.println(indent + "- " + element.getName() + " [" + element.getType() + "]" + " pos=("
 				+ element.getX() + "," + element.getY() + ")" + " size=(" + element.getWidth() + "x"
@@ -926,7 +1121,57 @@ public class SceneManager {
 		}
 	}
 
+	/**
+	 * Protège l'affichage des chaînes potentiellement nulles dans les logs.
+	 */
 	private String safe(String value) {
 		return value == null ? "null" : "\"" + value + "\"";
+	}
+	
+	/**
+	 * Retourne un instantané sérialisable de la scène courante.
+	 *
+	 * Cette méthode permet aux bots et aux serveurs spécialisés de lire l'état
+	 * courant sans exposer directement les objets graphiques internes.
+	 */
+	public synchronized SceneData getSceneSnapshot() {
+		return buildSceneSnapshot();
+	}
+
+	/**
+	 * Recherche un élément dans un instantané courant à partir de son nom qualifié.
+	 */
+	public synchronized ElementData findElementSnapshot(String fullPath) {
+		return findElementByPath(buildSceneSnapshot(), fullPath);
+	}
+
+	/**
+	 * Retourne la largeur logique du conteneur parent de l'élément ciblé.
+	 */
+	public synchronized int getParentWidth(String fullPath) {
+		String parent = parentPath(fullPath);
+		SceneData scene = buildSceneSnapshot();
+
+		if ("space".equals(parent)) {
+			return scene.getWidth();
+		}
+
+		ElementData parentElement = findElementByPath(scene, parent);
+		return parentElement == null ? 0 : parentElement.getWidth();
+	}
+
+	/**
+	 * Retourne la hauteur logique du conteneur parent de l'élément ciblé.
+	 */
+	public synchronized int getParentHeight(String fullPath) {
+		String parent = parentPath(fullPath);
+		SceneData scene = buildSceneSnapshot();
+
+		if ("space".equals(parent)) {
+			return scene.getHeight();
+		}
+
+		ElementData parentElement = findElementByPath(scene, parent);
+		return parentElement == null ? 0 : parentElement.getHeight();
 	}
 }
