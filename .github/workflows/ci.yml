@@ -1,4 +1,4 @@
-name: Java CI
+name: Java Quality Pipeline
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ "main", "dev" ]
 
 jobs:
-  test:
-    name: Compile and test
+  quality:
+    name: Compile, test, coverage, static analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -21,21 +21,67 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Download JUnit Console
+      - name: Download tools
         run: |
-          mkdir -p tools
+          mkdir -p tools reports out
+
           curl -L -o tools/junit-platform-console-standalone.jar \
             https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.10.2/junit-platform-console-standalone-1.10.2.jar
 
+          curl -L -o tools/jacocoagent.jar \
+            https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/0.8.12/org.jacoco.agent-0.8.12-runtime.jar
+
+          curl -L -o tools/jacococli.jar \
+            https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.12/org.jacoco.cli-0.8.12-nodeps.jar
+
+          curl -L -o tools/checkstyle.jar \
+            https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.17.0/checkstyle-10.17.0-all.jar
+
+      - name: Show project libraries
+        run: |
+          echo "lib contents:"
+          ls -l lib
+
       - name: Compile
         run: |
-          mkdir -p out
           find src -name "*.java" > sources.txt
-          javac -cp "lib/*:tools/junit-platform-console-standalone.jar" -d out @sources.txt
+          javac -g -cp "lib/*:tools/junit-platform-console-standalone.jar" -d out @sources.txt
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          xvfb-run -a java -jar tools/junit-platform-console-standalone.jar \
-            --class-path "out:lib/*" \
+          xvfb-run -a java \
+            -javaagent:tools/jacocoagent.jar=destfile=reports/jacoco.exec \
+            -cp "out:lib/*:tools/junit-platform-console-standalone.jar" \
+            org.junit.platform.console.ConsoleLauncher execute \
             --scan-class-path \
             --include-package tests
+
+      - name: Generate JaCoCo report
+        run: |
+          java -jar tools/jacococli.jar report reports/jacoco.exec \
+            --classfiles out \
+            --sourcefiles src \
+            --html reports/jacoco-html \
+            --xml reports/jacoco.xml \
+            --csv reports/jacoco.csv \
+            --name "Robi"
+
+      - name: Run Checkstyle
+        run: |
+          java -jar tools/checkstyle.jar \
+            -c .github/checkstyle/checkstyle.xml \
+            -f xml \
+            -o reports/checkstyle.xml \
+            $(find src -name "*.java")
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-reports
+          path: |
+            reports/jacoco.exec
+            reports/jacoco.xml
+            reports/jacoco.csv
+            reports/jacoco-html
+            reports/checkstyle.xml
