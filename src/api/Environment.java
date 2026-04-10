@@ -1,6 +1,7 @@
 package api;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -43,5 +44,9 @@ public class Environment {
 
 	public boolean hasReference(String name) {
 		return variables.containsKey(name);
+	}
+	
+	public Map<String, Reference> getReferences() {
+		return new LinkedHashMap<>(variables);
 	}
 }
